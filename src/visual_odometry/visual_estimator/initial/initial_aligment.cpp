@@ -1,5 +1,12 @@
 #include "initial_alignment.h"
 
+/**
+ * @brief 求解陀螺仪零偏，同时利用求出来的bias零偏重新进行预积分
+ * 
+ * @param[in] all_image_frame 
+ * @param[in] Bgs 
+ */
+
 void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
 {
     Matrix3d A;
@@ -9,6 +16,7 @@ void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
     b.setZero();
     map<double, ImageFrame>::iterator frame_i;
     map<double, ImageFrame>::iterator frame_j;
+    //取滑窗中相邻关键帧
     for (frame_i = all_image_frame.begin(); next(frame_i) != all_image_frame.end(); frame_i++)
     {
         frame_j = next(frame_i);
@@ -25,14 +33,14 @@ void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
     }
     delta_bg = A.ldlt().solve(b);
     ROS_INFO_STREAM("gyroscope bias initial calibration " << delta_bg.transpose());
-
+    // 滑窗中的零偏设置为 原来的bias + 求解出的delta_bias
     for (int i = 0; i <= WINDOW_SIZE; i++)
         Bgs[i] += delta_bg;
-
+    // 对all_image_frame中预积分量根据当前零偏重新积分
     for (frame_i = all_image_frame.begin(); next(frame_i) != all_image_frame.end( ); frame_i++)
     {
         frame_j = next(frame_i);
-        frame_j->second.pre_integration->repropagate(Vector3d::Zero(), Bgs[0]);
+        frame_j->second.pre_integration->repropagate(Vector3d::Zero(), Bgs[0]);//滑窗内的bias都一样吗？
     }
 }
 

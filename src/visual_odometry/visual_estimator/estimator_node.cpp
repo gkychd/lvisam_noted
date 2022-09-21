@@ -318,7 +318,7 @@ void process()
             m_odom.lock();
             initialization_info = odomRegister->getOdometry(odomQueue, img_msg->header.stamp.toSec() + estimator.td);//根据图像的时间戳，在lio系统中得到的odom队列中找到
                                                                                                                                                                                                                                                     //对应时间戳的数据，lio系统传出的数据是世界坐标系下的
-                                                                                                                                                                                                                                                    //雷达位姿Twl，经过getOdometry读取的是Twc等等数据
+                                                                                                                                                                                                                                                    //雷达位姿Twl，经过getOdometry读取的是Twc_vins等等数据
             m_odom.unlock();
 
 
