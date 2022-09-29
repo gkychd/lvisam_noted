@@ -17,7 +17,7 @@ struct SFMFeature
 {
     bool state;
     int id;
-    vector<pair<int,Vector2d>> observation;//<特征点所属可视帧号，特征点在该帧的归一化坐标>  observation.size() = 特征点的数量
+    vector<pair<int,Vector2d>> observation;
     double position[3];
     double depth;
 };

@@ -278,18 +278,18 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
             continue;
 
-        // depth is available, skip triangulation (trust the first estimate) 如果该点被雷达观测到了 那深度信息已知，则跳过该点的三角化过程
+        // depth is available, skip triangulation (trust the first estimate)
         if (it_per_id.estimated_depth > 0)
             continue;
 
-        int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;//imu_i表示第一个观察到该特征点的帧号  imu_j为之前的帧号
+        int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
 
         ROS_ASSERT(NUM_OF_CAM == 1);
         Eigen::MatrixXd svd_A(2 * it_per_id.feature_per_frame.size(), 4);
         int svd_idx = 0;
-        // R0 t0为第i帧cam--->world的变换矩阵    Twc = Twi * Tic(广义乘法)
+        // R0 t0为第i帧cam--->world的变换矩阵
         Eigen::Matrix<double, 3, 4> P0;
-        Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0]; // Rs 应该是 Rwi   Ps =Pwi
+        Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0]; // Rs应该是 Rwi   Ps  wi
         Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];             // Rwc
         // 投影矩阵
         P0.leftCols<3>() = Eigen::Matrix3d::Identity();
@@ -301,11 +301,11 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
             // R1 t1为第j帧cam--->world的变换矩阵
             Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
             Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
-            Eigen::Vector3d t = R0.transpose() * (t1 - t0); // 转换到相机坐标系下  T01     得到两帧之间的相对位姿 用于特征点的三角化
-            Eigen::Matrix3d R = R0.transpose() * R1;        // Rc0c1 
+            Eigen::Vector3d t = R0.transpose() * (t1 - t0); // 转换到相机坐标系下  T01
+            Eigen::Matrix3d R = R0.transpose() * R1;        // Rc0c1
 
             // 若以上坐标系正确的话，就是将相机的世界坐标系的三维点投影到当前相机坐标系下
-            Eigen::Matrix<double, 3, 4> P;//P10
+            Eigen::Matrix<double, 3, 4> P;
             P.leftCols<3>() = R.transpose();
             P.rightCols<1>() = -R.transpose() * t;
             //获取归一化坐标系下的位置

@@ -235,7 +235,6 @@ last_P0 = Ps[0];
  */
 bool Estimator::initialStructure()
 {
-    //Step 1 判断雷达里程计是否全覆盖视觉滑窗
     // Lidar initialization【】
     {
         bool lidar_info_available = true;
@@ -258,15 +257,13 @@ bool Estimator::initialStructure()
                 break;
             }
         }
-        //Step 2 利用雷达里程计数据
-        //只有当滑窗内的所有相机帧都有对应的雷达里程计（500Hz）数据时，lidar_info_available才为true
+
         // 如果激光雷达信息可使用，则直接使用激光惯性子系统的数据
         if (lidar_info_available == true)
         {
             // Update state
             /**
-             * @brief 大家可以考虑以下这里的的状态量所在的坐标系了，相机坐标系下还是其它坐标系下？ Twc_vins 根据下面三角化特征点的函数 这里的状态量为Twi
-             *                                                                                                                                                                                          Twc_vins = Twi ？？这里待考证
+             * @brief 大家可以考虑以下这里的的状态量所在的坐标系了，相机坐标系下还是其它坐标系下？ Twc
              * 
              */
             for (int i = 0; i <= WINDOW_SIZE; i++)
@@ -307,9 +304,9 @@ bool Estimator::initialStructure()
             return true;
         }
     }
-    //Step 3 判断加速度激励是否充分
-    //当lidar_info_available为false时才进行下面的程序
-    // 通过加速度标准差判断IMU是否有充分运动激励 计算每个图像帧对应的预积分的加速度
+
+
+    // 通过加速度标准差判断IMU是否有充分运动激励
     {
         map<double, ImageFrame>::iterator frame_it;
         Vector3d sum_g;
@@ -340,9 +337,8 @@ bool Estimator::initialStructure()
             // return false;
         }
     }
-    //Step 4 视觉sfm 得到滑窗中的所有关键帧的位姿
     // global sfm
-    Quaterniond Q[frame_count + 1];  // l <<-- r        Rwc 其中w为l 即为参考关键帧
+    Quaterniond Q[frame_count + 1];  // l <<-- r
     Vector3d T[frame_count + 1];
     map<int, Vector3d> sfm_tracked_points;
     vector<SFMFeature> sfm_f;   // 存储滑窗中所有的特征点的归一化坐标
@@ -364,7 +360,6 @@ bool Estimator::initialStructure()
     Matrix3d relative_R;  // l <<-- r
     Vector3d relative_T;
     int l;  // 滑窗中第几帧拿到满足要求的位姿变换矩阵
-    //Tle 其中: l为当前所选帧，e为窗口最后一帧
     if (!relativePose(relative_R, relative_T, l))
     {
         ROS_INFO("Not enough features or parallax; Move device around");
@@ -376,7 +371,7 @@ bool Estimator::initialStructure()
      * 
      */
     GlobalSFM sfm;
-    //Q = Rwc    T = twc           w: 为参考关键帧（相机枢纽关键帧）  c: 为当前关键帧（相机）
+    //
     if (!sfm.construct(frame_count + 1, Q, T, l,
                        relative_R, relative_T,
                        sfm_f, sfm_tracked_points))
@@ -385,7 +380,7 @@ bool Estimator::initialStructure()
         marginalization_flag = MARGIN_OLD;
         return false;
     }
-    //Step 5 其中Step 4是求出了关键帧的位姿，这里是求出所有帧的位姿，使用已三角化的地图点进行pnp
+
     // solve pnp for all frame
     map<double, ImageFrame>::iterator frame_it;
     map<int, Vector3d>::iterator it;
@@ -394,11 +389,10 @@ bool Estimator::initialStructure()
     {
         // provide initial guess
         cv::Mat r, rvec, t, D, tmp_r;
-        //如果该帧为关键帧，则可以直接使用前面求出的位姿
         if ((frame_it->first) == Headers[i].stamp.toSec())
         {
             frame_it->second.is_key_frame = true;
-            frame_it->second.R = Q[i].toRotationMatrix() * RIC[0].transpose();  //  R = Rwc * Rci = Rwi
+            frame_it->second.R = Q[i].toRotationMatrix() * RIC[0].transpose();  //  camera <-- imu : l帧为世界坐标系的原点
             frame_it->second.T = T[i];   // 这里忽略了相机与IMU之间的平移向量
             i++;
             continue;
@@ -412,7 +406,6 @@ bool Estimator::initialStructure()
         {
             i++;
         }
-        //最近的KF提供该帧位姿的初始值 Twc -> Tcw   w: 枢纽关键帧（相机）
         Matrix3d R_inital = (Q[i].inverse()).toRotationMatrix();
         Vector3d P_inital = -R_inital * T[i];
         cv::eigen2cv(R_inital, tmp_r);
@@ -422,15 +415,13 @@ bool Estimator::initialStructure()
         frame_it->second.is_key_frame = false;
         vector<cv::Point3f> pts_3_vector;
         vector<cv::Point2f> pts_2_vector;
-        // 遍历这一帧对应的特征点
         for (auto &id_pts : frame_it->second.points)
         {
             int feature_id = id_pts.first;
-            // 由于是单目，这里id_pts.second大小就是1
             for (auto &i_p : id_pts.second)
             {
                 it = sfm_tracked_points.find(feature_id);
-                if (it != sfm_tracked_points.end())//如果该点为之前视觉sfm已三角化的点  则取出该点的3D坐标（枢纽关键帧） 、2D坐标（像素坐标）
+                if (it != sfm_tracked_points.end())
                 {
                     Vector3d world_pts = it->second;
                     cv::Point3f pts_3(world_pts(0), world_pts(1), world_pts(2));
@@ -453,21 +444,17 @@ bool Estimator::initialStructure()
             ROS_DEBUG("solve pnp fail!");
             return false;
         }
-        //rvec 为Tcw   w: 枢纽关键帧
         cv::Rodrigues(rvec, r);
         MatrixXd R_pnp, tmp_R_pnp;
         cv::cv2eigen(r, tmp_R_pnp);
-        //R_pnp为Rwc  w: 枢纽关键帧
         R_pnp = tmp_R_pnp.transpose();
         MatrixXd T_pnp;
         cv::cv2eigen(t, T_pnp);
-        //T_pnp为twc  w: 枢纽关键帧
         T_pnp = R_pnp * (-T_pnp);
-        frame_it->second.R = R_pnp * RIC[0].transpose();//R = Rwc * Rci = Rwi        w: 枢纽关键帧    i：当前帧的imu系
+        frame_it->second.R = R_pnp * RIC[0].transpose();
         frame_it->second.T = T_pnp;
     }
-    //以上：所有帧的位姿已得到（相对于枢纽关键帧）
-    //Step 6 视觉联合imu初始化
+
     if (visualInitialAlign())
         return true;
     else
@@ -499,7 +486,7 @@ bool Estimator::visualInitialAlign()
     // 得到所有图像帧的位姿Ps、Rs，并将其置为关键帧
     for (int i = 0; i <= frame_count; i++)
     {
-        // R: Rwi      T: twi = twc     w: 枢纽关键帧
+        // R: l <-- imu   imu坐标系下旋转到世界坐标系下第l帧
         Matrix3d Ri = all_image_frame[Headers[i].stamp.toSec()].R;
         Vector3d Pi = all_image_frame[Headers[i].stamp.toSec()].T;  // 这里忽略了相机与IMU之间的平移向量
         Ps[i] = Pi;
@@ -541,14 +528,13 @@ bool Estimator::visualInitialAlign()
     //将Ps、Vs、depth尺度s缩放
     for (int i = frame_count; i >= 0; i--)
         // Ps转变为第i帧imu坐标系到第0帧imu坐标系的变换
-        //tc0_i 这里的Ps[i]表示在枢纽坐标系下c0到i的位移
         Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
 
     int kv = -1;
     map<double, ImageFrame>::iterator frame_i;
     for (frame_i = all_image_frame.begin(); frame_i != all_image_frame.end(); frame_i++)
     {
-        // 获取每一帧的速度信息，并将速度信息转换到枢纽坐标系下 Vs[i] = Vli   这里l：相机枢纽坐标系
+        // 获取每一帧的速度信息，并将速度信息转换到世界坐标系下（也就是第l帧）
         if(frame_i->second.is_key_frame)
         {
             kv++;
@@ -562,18 +548,17 @@ bool Estimator::visualInitialAlign()
             continue;
         it_per_id.estimated_depth *= s; // 添加尺度信息
     }
-    // 通过将重力旋转到z轴上，得到世界坐标系与相机枢纽坐标系之间的旋转矩阵 rot_diff
-    //R0 = Rwl  这里w：真实世界世界坐标系  l：相机的枢纽坐标系
+    // 通过将重力旋转到z轴上，得到世界坐标系与摄像机坐标系c0之间的旋转矩阵rot_diff
+    // R0 ---- Rw_g = Rw_c0
     Matrix3d R0 = Utility::g2R(g);
+    // Rs ---- Rc0_imu  ，R0*Rs = Rw_c0 * Rc0_imu
     // 这里只是相乘取出yaw角，并没有改变R0的坐标系
     double yaw = Utility::R2ypr(R0 * Rs[0]).x();
-    //对R0进行变换 其表达式还是Rwl 这里做yaw角变化 目的是为了使初始位姿在世界系（世界系的yaw值是不可观的，因此可任意设置）下的yaw角为0
     R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
 
-    // 使得，IMU坐标系下的重力向量与相机枢纽关键帧坐标系进行对齐
-    // R0 --- Rwl
-    // g_w = R0 * g_l = Rwl * g_l，这一步得到 g_w
-    //将相机枢纽关键帧下的重力g转到真实世界系下
+    // 使得，IMU坐标系下的重力向量与相机坐标系的第0帧的坐标系进行对齐
+    // R0 --- Rw_c0
+    // g_w = R0 * g_c0,这一步得到 g_w
     g = R0 * g;
     // Matrix3d rot_diff = R0 * Rs[0].transpose();
     Matrix3d rot_diff = R0;
@@ -581,9 +566,6 @@ bool Estimator::visualInitialAlign()
     // rot_diff = R0 --- R_w_c0
     for (int i = 0; i <= frame_count; i++)
     {
-        //Ps[i] = 真实世界坐标系下的 w_tc0_i 表示真实世界系下的c0系到当前时刻i系的位移
-        //Rs[i] = Rwi  w：真实世界坐标系（yaw不可观 但已根据初始的位姿的yaw值为0 已定）  i：当前时刻imu系
-        //Vs[i] = 真实世界坐标系下的当前时刻imu的速度
         Ps[i] = rot_diff * Ps[i];
         Rs[i] = rot_diff * Rs[i];
         Vs[i] = rot_diff * Vs[i];
@@ -625,12 +607,12 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
                 //第j个对应点在第i帧和最后一帧的(x,y)
                 Vector2d pts_0(corres[j].first(0), corres[j].first(1));
                 Vector2d pts_1(corres[j].second(0), corres[j].second(1));
-                double parallax = (pts_0 - pts_1).norm();   // 计算匹配点对的视差 视差的计算：同一个特征点在不同的相机帧坐标系下的坐标的欧式距离 距离越大 视差越大
+                double parallax = (pts_0 - pts_1).norm();   // 计算匹配点对的视差
                 sum_parallax = sum_parallax + parallax;
             }
             average_parallax = 1.0 * sum_parallax / int(corres.size());
-            //判断是否满足初始化条件：视差>30和内点数满足要求 一旦当前帧满足要求了 则直接返回，因此这里选择的帧l是满足要求的离窗口最后一帧最远的帧
-            //同时返回窗口最后一帧（当前帧）到第l帧（参考帧）的Rt   ----- Tle 其中: l为当前所选帧  e为窗口最后一帧
+            //判断是否满足初始化条件：视差>30和内点数满足要求
+            //同时返回窗口最后一帧（当前帧）到第l帧（参考帧）的Rt
             if (average_parallax * 460 > 30 && m_estimator.solveRelativeRT(corres, relative_R, relative_T))
             {
                 l = i;
@@ -876,7 +858,7 @@ void Estimator::optimization()
     {
         // construct new marginlization_factor
         MarginalizationFactor *marginalization_factor = new MarginalizationFactor(last_marginalization_info);
-        // last_marginalization_parameter_blocks保存的和margin掉变量有关系的变量
+        // last_marginalization_parameter_blocks保存的是和margin掉变量有关系的变量
         problem.AddResidualBlock(marginalization_factor, NULL,
                                  last_marginalization_parameter_blocks);
     }
@@ -957,7 +939,7 @@ void Estimator::optimization()
     // options.minimizer_progress_to_stdout = true;
     // options.use_nonmonotonic_steps = true;
     // 0.035ms
-    //边缘化老的就减少处理时间???  因为边缘化老的操作比较多，因此留给优化的时间就较少
+    //边缘化老的就减少处理时间???  这里减少优化的时间，因为边缘化老的帧需要前期处理的步骤较多
     if (marginalization_flag == MARGIN_OLD)
         options.max_solver_time_in_seconds = SOLVER_TIME * 4.0 / 5.0;
     else
@@ -981,8 +963,9 @@ void Estimator::optimization()
         //如果上一帧边缘化的先验信息存在
         if (last_marginalization_info)
         {
-            //存储上次边缘化后与Pose[0],SpeedBias[0]有关的参数块的序号
+            //存储上次边缘化后与Pose[0],SpeedBias[0]有关的参数块的序号 因为这里是margin掉最老帧（滑窗第一帧），因此drop_set是用来保存待margin掉的变量的索引
             vector<int> drop_set;
+            //其中last_marginalization_parameter_blocks中保存的是和margin掉的变量有关系的变量
             for (int i = 0; i < static_cast<int>(last_marginalization_parameter_blocks.size()); i++)
             {
                 //如果待估计参数为首帧状态量，则将序号push进drop_set中
@@ -1025,7 +1008,7 @@ void Estimator::optimization()
                 ++feature_index;
                 // 观测到该特征点的首帧
                 int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
-                if (imu_i != 0)
+                if (imu_i != 0)//观测到该特征点的首帧必须是第0帧？ 因为这是初始化过程，所选择的特征点必须被第0帧观察到，这样才能得到初始位姿
                     continue;
                 //获取首次观测到该特征点时其所在的归一化相机坐标系
                 Vector3d pts_i = it_per_id.feature_per_frame[0].point;
@@ -1060,10 +1043,10 @@ void Estimator::optimization()
         }
 
         TicToc t_pre_margin;
-        // 计算每个残差对应的雅各比矩阵，并将各参数块拷贝统一内存中
+        // 计算每个残差对应的雅可比矩阵，并将各参数块拷贝统一内存中
         marginalization_info->preMarginalize();
         ROS_DEBUG("pre marginalization %f ms", t_pre_margin.toc());
-        // 多线程构造先验项舒尔补AX = b的结构，对X0处的值进行泰勒展开，保留一阶导，即雅各比矩阵，然后计算残差
+        // 多线程构造先验项舒尔补AX = b的结构，对X0处的值进行泰勒展开，保留一阶导，即雅可比矩阵，然后计算残差
         TicToc t_margin;
         marginalization_info->marginalize();
         ROS_DEBUG("marginalization %f ms", t_margin.toc());
@@ -1080,7 +1063,7 @@ void Estimator::optimization()
         {
             addr_shift[reinterpret_cast<long>(para_Td[0])] = para_Td[0];
         }
-        vector<double *> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
+        vector<double *> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);//返回的是上一帧的参数块
 
         if (last_marginalization_info)
             delete last_marginalization_info;

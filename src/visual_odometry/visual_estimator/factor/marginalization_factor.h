@@ -56,7 +56,7 @@ public:
     int localSize(int size) const;
     int globalSize(int size) const;
     void addResidualBlockInfo(ResidualBlockInfo *residual_block_info);//添加残差块相关变量（待边缘化）
-    void preMarginalize();//计算每个残差对应的雅各比，并更新parameter_block_data
+    void preMarginalize();//计算每个残差对应的雅可比，并更新parameter_block_data
     void marginalize();
     std::vector<double *> getParameterBlocks(std::unordered_map<long, double *> &addr_shift);
 
@@ -65,21 +65,21 @@ public:
     std::vector<ResidualBlockInfo *> factors;
     int m, n;//m：需要边缘化的变量个数，n:保留下来的变量个数
 
-    //<优化变量内存地址，global size>
-    std::unordered_map<long, int> parameter_block_size; //global size
+    //<优化变量内存地址，global size> 表示block的大小
+    std::unordered_map<long, int> parameter_block_size;
     int sum_block_size;
-    //<优化变量内存地址，在矩阵块中的id>
-    std::unordered_map<long, int> parameter_block_idx; //local size
+    //<优化变量内存地址，在矩阵块中的id> 表示该block在大矩阵中的位置索引
+    std::unordered_map<long, int> parameter_block_idx; 
     //<优化变量内存地址,数据>
     std::unordered_map<long, double *> parameter_block_data;
-    //按顺序存放上面的 parameter_block_size 中被保留的优化变量
+    //按顺序存放上面的 parameter_block_size 中被保留的优化变量的维度
     std::vector<int> keep_block_size; //global size
-    //按顺序存放上面的 parameter_block_idx 中被保留的优化变量
+    //按顺序存放上面的 parameter_block_idx 中被保留的优化变量在大矩阵中的位置
     std::vector<int> keep_block_idx;  //local size
     //按顺序存放上面的 parameter_block_data 中被保留的优化变量
     std::vector<double *> keep_block_data;
 
-    //边缘化后从信息矩阵恢复出来的雅各比矩阵
+    //边缘化后从信息矩阵恢复出来的雅可比矩阵
     Eigen::MatrixXd linearized_jacobians;
     //边缘化后从信息矩阵恢复出来的残差矩阵
     Eigen::VectorXd linearized_residuals;
