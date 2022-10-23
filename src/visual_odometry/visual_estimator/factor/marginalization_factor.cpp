@@ -124,7 +124,7 @@ void MarginalizationInfo::preMarginalize()
 {
     for (auto it : factors)
     {
-        //计算各残差块的残差和雅可比矩阵
+        //计算各残差块的残差和雅各比矩阵
         it->Evaluate();
         //获取各残差块的参数块大小
         std::vector<int> block_sizes = it->cost_function->parameter_block_sizes();
@@ -352,8 +352,8 @@ std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map
         {
             keep_block_size.push_back(parameter_block_size[it.first]);
             keep_block_idx.push_back(parameter_block_idx[it.first]);
-            keep_block_data.push_back(parameter_block_data[it.first]);//当残差为x-x0时，这个数值对应x0  ----> 优化后的参数（预测值）
-            keep_block_addr.push_back(addr_shift[it.first]);//当残差为x-x0时，这个数值对应x 表示测量值
+            keep_block_data.push_back(parameter_block_data[it.first]);
+            keep_block_addr.push_back(addr_shift[it.first]);
         }
     }
     sum_block_size = std::accumulate(std::begin(keep_block_size), std::end(keep_block_size), 0);
@@ -399,7 +399,7 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
         Eigen::VectorXd x0 = Eigen::Map<const Eigen::VectorXd>(marginalization_info->keep_block_data[i], size);
         if (size != 7)
             dx.segment(idx, size) = x - x0;
-        else//size == 7 表示位姿为xyz+四元数
+        else
         {
             dx.segment<3>(idx + 0) = x.head<3>() - x0.head<3>();
             dx.segment<3>(idx + 3) = 2.0 * Utility::positify(Eigen::Quaterniond(x0(6), x0(3), x0(4), x0(5)).inverse() * Eigen::Quaterniond(x(6), x(3), x(4), x(5))).vec();
